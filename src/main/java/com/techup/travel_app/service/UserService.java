@@ -1,8 +1,10 @@
 package com.techup.travel_app.service;
 
+import com.techup.travel_app.dto.RegisterRequest;
 import com.techup.travel_app.dto.UserRequest;
 import com.techup.travel_app.dto.UserResponse;
 import com.techup.travel_app.entity.User;
+import com.techup.travel_app.exception.EmailAlreadyExistsException;
 import com.techup.travel_app.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -20,13 +22,30 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     
     @Transactional
+    public UserResponse createUser(RegisterRequest request) {
+        // Check if email already exists
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new EmailAlreadyExistsException("Email already exists");
+        }
+        
+        // Create new user with securely hashed password (BCrypt)
+        User user = new User();
+        user.setEmail(request.getEmail());
+        user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        // displayName is optional, can be set later
+        
+        User savedUser = userRepository.save(user);
+        return mapToResponse(savedUser);
+    }
+    
+    @Transactional
     public UserResponse createUser(UserRequest request) {
         // Check if email already exists
         if (userRepository.existsByEmail(request.getEmail())) {
-            throw new RuntimeException("Email already exists");
+            throw new EmailAlreadyExistsException("Email already exists");
         }
         
-        // Create new user
+        // Create new user with securely hashed password (BCrypt)
         User user = new User();
         user.setEmail(request.getEmail());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
@@ -62,7 +81,7 @@ public class UserService {
         // Check if email is being changed and if it's already taken
         if (!user.getEmail().equals(request.getEmail()) && 
             userRepository.existsByEmail(request.getEmail())) {
-            throw new RuntimeException("Email already exists");
+            throw new EmailAlreadyExistsException("Email already exists");
         }
         
         user.setEmail(request.getEmail());
