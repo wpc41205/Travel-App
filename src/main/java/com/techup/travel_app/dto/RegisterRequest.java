@@ -1,5 +1,6 @@
 package com.techup.travel_app.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -16,6 +17,7 @@ public class RegisterRequest {
     @Size(min = 6, message = "Password must be at least 6 characters")
     private String password;
 
+    @JsonAlias({"name", "fullName", "display_name"})
     @NotBlank(message = "Display name is required")
     @Size(min = 2, max = 100, message = "Display name must be between 2 and 100 characters")
     private String displayName;

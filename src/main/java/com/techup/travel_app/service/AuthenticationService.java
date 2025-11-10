@@ -2,7 +2,6 @@ package com.techup.travel_app.service;
 
 import com.techup.travel_app.dto.LoginRequest;
 import com.techup.travel_app.dto.LoginResponse;
-import com.techup.travel_app.entity.RefreshToken;
 import com.techup.travel_app.entity.User;
 import com.techup.travel_app.repository.UserRepository;
 import com.techup.travel_app.security.CustomUserDetails;
@@ -22,7 +21,6 @@ public class AuthenticationService {
     private final AuthenticationManager authenticationManager;
     private final JwtUtil jwtUtil;
     private final UserRepository userRepository;
-    private final RefreshTokenService refreshTokenService;
 
     public LoginResponse login(LoginRequest request) {
         try {
@@ -37,12 +35,10 @@ public class AuthenticationService {
             
             // Generate access token (short-lived, 15-30 min)
             String accessToken = jwtUtil.generateAccessToken(userDetails);
-
-            // Get user and create refresh token (long-lived, 7 days)
+            
+            // Get user details
             User user = userRepository.findByEmail(request.getEmail())
                     .orElseThrow(() -> new RuntimeException("User not found"));
-
-            RefreshToken refreshToken = refreshTokenService.createRefreshToken(user.getId());
 
             // Build user info
             LoginResponse.UserInfo userInfo = LoginResponse.UserInfo.builder()
@@ -52,7 +48,6 @@ public class AuthenticationService {
 
             return LoginResponse.builder()
                     .accessToken(accessToken)
-                    .refreshToken(refreshToken.getToken())
                     .type("Bearer")
                     .user(userInfo)
                     .build();

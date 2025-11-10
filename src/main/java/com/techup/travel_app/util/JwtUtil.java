@@ -23,9 +23,6 @@ public class JwtUtil {
     @Value("${jwt.access-token-expiration:1800000}") // Default 30 minutes (30 * 60 * 1000)
     private Long accessTokenExpiration;
 
-    @Value("${jwt.refresh-token-expiration:604800000}") // Default 7 days (7 * 24 * 60 * 60 * 1000)
-    private Long refreshTokenExpiration;
-
     private SecretKey getSigningKey() {
         byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
         return Keys.hmacShaKeyFor(keyBytes);
@@ -64,11 +61,6 @@ public class JwtUtil {
     public String generateAccessToken(String username) {
         Map<String, Object> claims = new HashMap<>();
         return createToken(claims, username, accessTokenExpiration);
-    }
-
-    public String generateRefreshToken(String username) {
-        Map<String, Object> claims = new HashMap<>();
-        return createToken(claims, username, refreshTokenExpiration);
     }
 
     // Legacy method for backward compatibility
