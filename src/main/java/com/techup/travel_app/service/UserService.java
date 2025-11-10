@@ -32,7 +32,7 @@ public class UserService {
         User user = new User();
         user.setEmail(request.getEmail());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-        // displayName is optional, can be set later
+        user.setDisplayName(request.getDisplayName());
         
         User savedUser = userRepository.save(user);
         return mapToResponse(savedUser);
