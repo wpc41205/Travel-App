@@ -6,12 +6,18 @@ import com.techup.travel_app.entity.Trip;
 import com.techup.travel_app.entity.User;
 import com.techup.travel_app.repository.TripRepository;
 import com.techup.travel_app.repository.UserRepository;
+import com.techup.travel_app.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 @Service
 @RequiredArgsConstructor
@@ -19,6 +25,7 @@ public class TripService {
     
     private final TripRepository tripRepository;
     private final UserRepository userRepository;
+    private final SupabaseStorageService storageService;
     
     @Transactional
     public TripResponse createTrip(TripRequest request) {
@@ -37,6 +44,13 @@ public class TripService {
         
         Trip savedTrip = tripRepository.save(trip);
         return mapToResponse(savedTrip);
+    }
+
+    @Transactional
+    public TripResponse createTripWithUploads(TripRequest request, List<MultipartFile> photos) {
+        List<String> uploadedPhotos = storageService.uploadTripPhotos(photos);
+        request.setPhotos(uploadedPhotos);
+        return createTrip(request);
     }
     
     public TripResponse getTripById(Long id) {
@@ -68,6 +82,11 @@ public class TripService {
         Trip trip = tripRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Trip not found with id: " + id));
         
+        Long currentUserId = getCurrentUserId();
+        if (trip.getAuthorId() == null || !trip.getAuthorId().equals(currentUserId)) {
+            throw new AccessDeniedException("You can only edit your own trips.");
+        }
+        
         // Verify author exists if authorId is being changed
         if (request.getAuthorId() != null && !trip.getAuthorId().equals(request.getAuthorId())) {
             userRepository.findById(request.getAuthorId())
@@ -94,10 +113,15 @@ public class TripService {
     
     @Transactional
     public void deleteTrip(Long id) {
-        if (!tripRepository.existsById(id)) {
-            throw new RuntimeException("Trip not found with id: " + id);
+        Trip trip = tripRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Trip not found with id: " + id));
+
+        Long currentUserId = getCurrentUserId();
+        if (trip.getAuthorId() == null || !trip.getAuthorId().equals(currentUserId)) {
+            throw new AccessDeniedException("You can only delete your own trips.");
         }
-        tripRepository.deleteById(id);
+
+        tripRepository.delete(trip);
     }
     
     private TripResponse mapToResponse(Trip trip) {
@@ -125,6 +149,20 @@ public class TripService {
         }
         
         return builder.build();
+    }
+
+    private Long getCurrentUserId() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AccessDeniedException("Authentication required.");
+        }
+
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof CustomUserDetails customUserDetails) {
+            return customUserDetails.getUserId();
+        }
+
+        throw new AccessDeniedException("Unable to determine current user.");
     }
 }
 

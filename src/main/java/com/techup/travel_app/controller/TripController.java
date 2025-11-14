@@ -7,7 +7,9 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -19,9 +21,17 @@ public class TripController {
     
     private final TripService tripService;
     
-    @PostMapping("/trips")
+    @PostMapping(value = "/trips", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<TripResponse> createTrip(@Valid @RequestBody TripRequest request) {
         TripResponse response = tripService.createTrip(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PostMapping(value = "/trips", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<TripResponse> createTripWithUploads(
+            @Valid @RequestPart("trip") TripRequest request,
+            @RequestPart(value = "photos", required = false) List<MultipartFile> photos) {
+        TripResponse response = tripService.createTripWithUploads(request, photos);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
     
