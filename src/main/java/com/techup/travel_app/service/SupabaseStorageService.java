@@ -36,17 +36,30 @@ public class SupabaseStorageService {
 
     public List<String> uploadTripPhotos(List<MultipartFile> photos) {
         List<String> uploaded = new ArrayList<>();
-        if (photos == null) {
+        if (photos == null || photos.isEmpty()) {
+            log.info("No photos to upload");
             return uploaded;
         }
 
+        log.info("Starting upload of {} photo(s) to Supabase Storage", photos.size());
+        
         for (MultipartFile photo : photos) {
             if (photo == null || photo.isEmpty()) {
+                log.warn("Skipping empty photo");
                 continue;
             }
-            uploaded.add(uploadPhoto(photo));
+            
+            try {
+                String url = uploadPhoto(photo);
+                uploaded.add(url);
+                log.info("Successfully uploaded photo: {} -> {}", photo.getOriginalFilename(), url);
+            } catch (Exception e) {
+                log.error("Failed to upload photo: {}", photo.getOriginalFilename(), e);
+                throw new IllegalStateException("Failed to upload photo: " + photo.getOriginalFilename() + " - " + e.getMessage(), e);
+            }
         }
 
+        log.info("Successfully uploaded {} photo(s) to Supabase Storage", uploaded.size());
         return uploaded;
     }
 
@@ -56,25 +69,56 @@ public class SupabaseStorageService {
         try {
             String objectName = buildObjectName(file.getOriginalFilename());
             String requestUrl = normalizeBaseUrl() + "/storage/v1/object/" + bucketName + "/" + objectName;
+            
+            log.info("Uploading file to Supabase: {} -> {}", file.getOriginalFilename(), objectName);
+            log.info("File size: {} bytes, Content type: {}", file.getSize(), file.getContentType());
+            log.info("Supabase URL: {}, Bucket: {}", supabaseUrl, bucketName);
 
             HttpHeaders headers = new HttpHeaders();
+            // Use Bearer token for authentication (works with both anon and service role keys)
             headers.setBearerAuth(apiKey);
             headers.set("apikey", apiKey);
             headers.add("x-upsert", "true");
             headers.setContentType(resolveMediaType(file.getContentType()));
+            // Add cache control
+            headers.add("Cache-Control", "max-age=3600");
 
-            HttpEntity<byte[]> entity = new HttpEntity<>(file.getBytes(), headers);
+            byte[] fileBytes = file.getBytes();
+            HttpEntity<byte[]> entity = new HttpEntity<>(fileBytes, headers);
 
+            log.info("Sending POST request to: {}", requestUrl);
             ResponseEntity<String> response = restTemplate.exchange(requestUrl, HttpMethod.POST, entity, String.class);
 
+            log.info("Supabase response status: {}, body: {}", response.getStatusCode(), response.getBody());
+
             if (!response.getStatusCode().is2xxSuccessful()) {
-                log.error("Failed to upload photo to Supabase. Status: {}, body: {}", response.getStatusCode(), response.getBody());
-                throw new IllegalStateException("Unable to upload photo to Supabase storage");
+                String errorBody = response.getBody() != null ? response.getBody() : "No error body";
+                log.error("Failed to upload photo to Supabase. Status: {}, body: {}", response.getStatusCode(), errorBody);
+                
+                // Provide helpful error message
+                if (response.getStatusCode().value() == 401 || response.getStatusCode().value() == 403) {
+                    throw new IllegalStateException(
+                        "Authentication failed. Please check your Supabase API key. " +
+                        "For file uploads, you need to use a Service Role Key (not anon key). " +
+                        "Status: " + response.getStatusCode() + ", Body: " + errorBody
+                    );
+                }
+                
+                throw new IllegalStateException(
+                    "Unable to upload photo to Supabase storage. Status: " + response.getStatusCode() + 
+                    ", Body: " + errorBody
+                );
             }
 
-            return normalizeBaseUrl() + "/storage/v1/object/public/" + bucketName + "/" + objectName;
+            String publicUrl = normalizeBaseUrl() + "/storage/v1/object/public/" + bucketName + "/" + objectName;
+            log.info("Upload successful! Public URL: {}", publicUrl);
+            return publicUrl;
+        } catch (org.springframework.web.client.RestClientException ex) {
+            log.error("RestClient error uploading photo to Supabase: {}", ex.getMessage(), ex);
+            throw new IllegalStateException("Failed to connect to Supabase storage: " + ex.getMessage(), ex);
         } catch (IOException ex) {
-            throw new IllegalStateException("Failed to read photo bytes", ex);
+            log.error("IO error reading photo bytes: {}", ex.getMessage(), ex);
+            throw new IllegalStateException("Failed to read photo bytes: " + ex.getMessage(), ex);
         }
     }
 

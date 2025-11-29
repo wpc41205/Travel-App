@@ -8,6 +8,7 @@ import com.techup.travel_app.repository.TripRepository;
 import com.techup.travel_app.repository.UserRepository;
 import com.techup.travel_app.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -21,6 +22,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TripService {
     
     private final TripRepository tripRepository;
@@ -51,6 +53,76 @@ public class TripService {
         List<String> uploadedPhotos = storageService.uploadTripPhotos(photos);
         request.setPhotos(uploadedPhotos);
         return createTrip(request);
+    }
+
+    @Transactional
+    public TripResponse createTripForAuthorWithUploads(
+            Long authorId,
+            TripRequest request,
+            MultipartFile primaryImage,
+            List<MultipartFile> additionalImages) {
+        request.setAuthorId(authorId);
+
+        List<MultipartFile> filesToUpload = new ArrayList<>();
+        if (primaryImage != null && !primaryImage.isEmpty()) {
+            filesToUpload.add(primaryImage);
+        }
+        if (additionalImages != null) {
+            additionalImages.stream()
+                    .filter(file -> file != null && !file.isEmpty())
+                    .forEach(filesToUpload::add);
+        }
+
+        List<String> uploadedPhotos = storageService.uploadTripPhotos(filesToUpload);
+        request.setPhotos(uploadedPhotos);
+        return createTrip(request);
+    }
+
+    @Transactional
+    public TripResponse createTripForCurrentUser(
+            TripRequest request,
+            MultipartFile primaryImage,
+            List<MultipartFile> additionalImages) {
+        // Get current authenticated user
+        Long currentUserId = getCurrentUserId();
+        
+        // Verify user exists
+        User author = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + currentUserId));
+        
+        // Combine primary and additional images for upload
+        List<MultipartFile> filesToUpload = new ArrayList<>();
+        if (primaryImage != null && !primaryImage.isEmpty()) {
+            filesToUpload.add(primaryImage);
+        }
+        if (additionalImages != null) {
+            additionalImages.stream()
+                    .filter(file -> file != null && !file.isEmpty())
+                    .forEach(filesToUpload::add);
+        }
+        
+        // Upload images to Supabase storage
+        List<String> uploadedPhotos = new ArrayList<>();
+        if (!filesToUpload.isEmpty()) {
+            log.info("Uploading {} image(s) to Supabase Storage for trip: {}", filesToUpload.size(), request.getTitle());
+            uploadedPhotos = storageService.uploadTripPhotos(filesToUpload);
+            log.info("Successfully uploaded {} image(s) to Supabase Storage. URLs: {}", uploadedPhotos.size(), uploadedPhotos);
+        } else {
+            log.info("No images to upload for trip: {}", request.getTitle());
+        }
+        
+        // Create trip with current user as author
+        Trip trip = new Trip();
+        trip.setTitle(request.getTitle());
+        trip.setDescription(request.getDescription());
+        trip.setPhotos(uploadedPhotos);
+        trip.setTags(request.getTags() != null ? request.getTags() : new ArrayList<>());
+        trip.setLatitude(request.getLatitude());
+        trip.setLongitude(request.getLongitude());
+        trip.setAuthorId(currentUserId);
+        
+        Trip savedTrip = tripRepository.save(trip);
+        return mapToResponse(savedTrip);
     }
     
     public TripResponse getTripById(Long id) {
