@@ -230,8 +230,135 @@ public class TripController {
         return ResponseEntity.ok(responses);
     }
     
-    @PutMapping("/trips/{id}")
+    @PutMapping(value = "/trips/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<TripResponse> updateTrip(
+            @PathVariable Long id,
+            @Valid @RequestBody TripRequest request) {
+        TripResponse response = tripService.updateTrip(id, request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PutMapping(value = "/trips/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<TripResponse> updateTripWithUploads(
+            @PathVariable Long id,
+            @RequestPart(value = "trip", required = false) String tripJson,
+            @RequestParam(value = "title", required = false) String title,
+            @RequestParam(value = "description", required = false) String description,
+            @RequestParam(value = "tags", required = false) String tags,
+            @RequestParam(value = "latitude", required = false) Double latitude,
+            @RequestParam(value = "longitude", required = false) Double longitude,
+            @RequestPart(value = "primaryImage", required = false) MultipartFile primaryImage,
+            @RequestPart(value = "additionalImages", required = false) List<MultipartFile> additionalImages) {
+        try {
+            TripRequest tripRequest = new TripRequest();
+            
+            // Try to parse JSON first
+            if (tripJson != null && !tripJson.trim().isEmpty()) {
+                try {
+                    ObjectMapper objectMapper = new ObjectMapper();
+                    tripRequest = objectMapper.readValue(tripJson, TripRequest.class);
+                } catch (Exception e) {
+                    log.warn("Failed to parse trip JSON, using form params instead: {}", e.getMessage());
+                }
+            }
+            
+            // Override with form params if provided (form params take precedence)
+            if (title != null && !title.trim().isEmpty()) {
+                tripRequest.setTitle(title);
+            }
+            if (description != null) {
+                tripRequest.setDescription(description);
+            }
+            if (tags != null && !tags.trim().isEmpty()) {
+                tripRequest.setTags(java.util.Arrays.asList(tags.split(",")));
+            }
+            if (latitude != null) {
+                tripRequest.setLatitude(latitude);
+            }
+            if (longitude != null) {
+                tripRequest.setLongitude(longitude);
+            }
+            
+            log.info("Updating trip with ID: {}", id);
+            
+            TripResponse response = tripService.updateTripWithUploads(
+                    id,
+                    tripRequest,
+                    primaryImage,
+                    additionalImages);
+            log.info("Trip ID {} updated successfully", id);
+            return ResponseEntity.ok(response);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            log.error("Authentication error updating trip", e);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        } catch (Exception e) {
+            log.error("Error updating trip: {}", e.getMessage(), e);
+            throw e; // Let GlobalExceptionHandler handle it
+        }
+    }
+
+    // Alias endpoint for frontend compatibility (destinations = trips)
+    @PutMapping(value = "/destinations/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<TripResponse> updateDestination(
+            @PathVariable Long id,
+            @RequestPart(value = "trip", required = false) String tripJson,
+            @RequestParam(value = "title", required = false) String title,
+            @RequestParam(value = "description", required = false) String description,
+            @RequestParam(value = "tags", required = false) String tags,
+            @RequestParam(value = "latitude", required = false) Double latitude,
+            @RequestParam(value = "longitude", required = false) Double longitude,
+            @RequestPart(value = "primaryImage", required = false) MultipartFile primaryImage,
+            @RequestPart(value = "additionalImages", required = false) List<MultipartFile> additionalImages) {
+        try {
+            TripRequest tripRequest = new TripRequest();
+            
+            // Try to parse JSON first
+            if (tripJson != null && !tripJson.trim().isEmpty()) {
+                try {
+                    ObjectMapper objectMapper = new ObjectMapper();
+                    tripRequest = objectMapper.readValue(tripJson, TripRequest.class);
+                } catch (Exception e) {
+                    log.warn("Failed to parse trip JSON, using form params instead: {}", e.getMessage());
+                }
+            }
+            
+            // Override with form params if provided (form params take precedence)
+            if (title != null && !title.trim().isEmpty()) {
+                tripRequest.setTitle(title);
+            }
+            if (description != null) {
+                tripRequest.setDescription(description);
+            }
+            if (tags != null && !tags.trim().isEmpty()) {
+                tripRequest.setTags(java.util.Arrays.asList(tags.split(",")));
+            }
+            if (latitude != null) {
+                tripRequest.setLatitude(latitude);
+            }
+            if (longitude != null) {
+                tripRequest.setLongitude(longitude);
+            }
+            
+            log.info("Updating destination with ID: {}", id);
+            
+            TripResponse response = tripService.updateTripWithUploads(
+                    id,
+                    tripRequest,
+                    primaryImage,
+                    additionalImages);
+            log.info("Destination ID {} updated successfully", id);
+            return ResponseEntity.ok(response);
+        } catch (org.springframework.security.access.AccessDeniedException e) {
+            log.error("Authentication error updating destination", e);
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        } catch (Exception e) {
+            log.error("Error updating destination: {}", e.getMessage(), e);
+            throw e; // Let GlobalExceptionHandler handle it
+        }
+    }
+
+    @PutMapping(value = "/destinations/{id}", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<TripResponse> updateDestinationJson(
             @PathVariable Long id,
             @Valid @RequestBody TripRequest request) {
         TripResponse response = tripService.updateTrip(id, request);

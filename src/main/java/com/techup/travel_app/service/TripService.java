@@ -182,6 +182,113 @@ public class TripService {
         Trip updatedTrip = tripRepository.save(trip);
         return mapToResponse(updatedTrip);
     }
+
+    @Transactional
+    public TripResponse updateTripWithUploads(
+            Long id,
+            TripRequest request,
+            MultipartFile primaryImage,
+            List<MultipartFile> additionalImages) {
+        Trip trip = tripRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Trip not found with id: " + id));
+        
+        Long currentUserId = getCurrentUserId();
+        if (trip.getAuthorId() == null || !trip.getAuthorId().equals(currentUserId)) {
+            throw new AccessDeniedException("You can only edit your own trips.");
+        }
+        
+        // Handle image uploads - separate primary and additional images
+        String uploadedPrimaryImageUrl = null;
+        List<String> uploadedAdditionalImageUrls = new ArrayList<>();
+        
+        if (primaryImage != null && !primaryImage.isEmpty()) {
+            List<MultipartFile> primaryFileList = new ArrayList<>();
+            primaryFileList.add(primaryImage);
+            List<String> uploaded = storageService.uploadTripPhotos(primaryFileList);
+            if (!uploaded.isEmpty()) {
+                uploadedPrimaryImageUrl = uploaded.get(0);
+                log.info("Uploaded primary image to Supabase Storage for trip ID: {}", id);
+            }
+        }
+        
+        if (additionalImages != null && !additionalImages.isEmpty()) {
+            List<MultipartFile> additionalFiles = additionalImages.stream()
+                    .filter(file -> file != null && !file.isEmpty())
+                    .collect(Collectors.toList());
+            if (!additionalFiles.isEmpty()) {
+                uploadedAdditionalImageUrls = storageService.uploadTripPhotos(additionalFiles);
+                log.info("Uploaded {} additional image(s) to Supabase Storage for trip ID: {}", 
+                        uploadedAdditionalImageUrls.size(), id);
+            }
+        }
+        
+        // Update trip fields
+        if (request.getTitle() != null && !request.getTitle().trim().isEmpty()) {
+            trip.setTitle(request.getTitle());
+        }
+        if (request.getDescription() != null) {
+            trip.setDescription(request.getDescription());
+        }
+        if (request.getTags() != null) {
+            trip.setTags(request.getTags());
+        }
+        if (request.getLatitude() != null) {
+            trip.setLatitude(request.getLatitude());
+        }
+        if (request.getLongitude() != null) {
+            trip.setLongitude(request.getLongitude());
+        }
+        
+        // Update photos: merge new uploads with existing photos
+        // Strategy: 
+        // 1. Start with existing photos from request (if provided) or current trip photos
+        // 2. If primary image is uploaded, replace the first photo (or add as first if no photos exist)
+        // 3. Add additional uploaded images to the end
+        
+        List<String> finalPhotos = new ArrayList<>();
+        
+        // Start with existing photos: use request.getPhotos() if provided (frontend sends current photos to keep)
+        // Otherwise, use current trip photos (preserve all existing photos)
+        if (request.getPhotos() != null && !request.getPhotos().isEmpty()) {
+            // Frontend sent the list of photos to keep (may have removed some via delete button)
+            finalPhotos.addAll(request.getPhotos());
+            log.info("Using {} existing photo(s) from request", request.getPhotos().size());
+        } else if (trip.getPhotos() != null && !trip.getPhotos().isEmpty()) {
+            // No photos in request, keep all existing photos
+            finalPhotos.addAll(trip.getPhotos());
+            log.info("Keeping {} existing photo(s) from trip", trip.getPhotos().size());
+        }
+        
+        // Handle primary image upload: replace first photo or add as first
+        if (uploadedPrimaryImageUrl != null) {
+            if (!finalPhotos.isEmpty()) {
+                // Replace first photo with new primary image
+                finalPhotos.set(0, uploadedPrimaryImageUrl);
+                log.info("Replaced primary image (first photo)");
+            } else {
+                // No existing photos, add primary as first
+                finalPhotos.add(uploadedPrimaryImageUrl);
+                log.info("Added primary image as first photo");
+            }
+        }
+        
+        // Handle additional images upload: append to the end
+        if (!uploadedAdditionalImageUrls.isEmpty()) {
+            for (String additionalUrl : uploadedAdditionalImageUrls) {
+                if (!finalPhotos.contains(additionalUrl)) {
+                    finalPhotos.add(additionalUrl);
+                }
+            }
+            log.info("Added {} additional image(s), total photos: {}", 
+                    uploadedAdditionalImageUrls.size(), finalPhotos.size());
+        }
+        
+        trip.setPhotos(finalPhotos);
+        
+        Trip updatedTrip = tripRepository.save(trip);
+        log.info("Trip ID {} updated successfully", id);
+        return mapToResponse(updatedTrip);
+    }
     
     @Transactional
     public void deleteTrip(Long id) {
